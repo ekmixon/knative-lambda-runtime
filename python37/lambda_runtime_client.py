@@ -50,12 +50,12 @@ class LambdaRuntimeClient(object):
         self.runtime_connection.request("GET", endpoint)
         response = self.runtime_connection.getresponse()
         response_body = response.read()
-        headers = defaultdict(lambda: None, {k: v for k, v in response.getheaders()})
+        headers = defaultdict(lambda: None, dict(response.getheaders()))
 
         if response.code != http.HTTPStatus.OK:
             raise LambdaRuntimeClientError(endpoint, response.code, response_body)
 
-        result = InvocationRequest(
+        return InvocationRequest(
             invoke_id=headers["Lambda-Runtime-Aws-Request-Id"],
             x_amzn_trace_id=headers["Lambda-Runtime-Trace-Id"],
             invoked_function_arn=headers["Lambda-Runtime-Invoked-Function-Arn"],
@@ -63,10 +63,8 @@ class LambdaRuntimeClient(object):
             client_context=headers["Lambda-Runtime-Client-Context"],
             cloudevents_context=headers["Lambda-Runtime-Cloudevents-Context"],
             cognito_identity=headers["Lambda-Runtime-Cognito-Identity"],
-            event_body=response_body
+            event_body=response_body,
         )
-
-        return result
 
     def post_invocation_result(self, invoke_id, result_data):
         endpoint = self.response_endpoint.format(invoke_id)

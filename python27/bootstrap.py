@@ -33,7 +33,7 @@ class FaultData(object):
             try:
                 trace = "\n".join(trace)
             except TypeError:
-                trace = str(trace)
+                trace = trace
         self.msg = str(msg)
         self.except_value = except_value if except_value is None else str(except_value)
         self.trace = trace
@@ -51,7 +51,7 @@ def _get_handler(handler):
     try:
         (modname, fname) = handler.rsplit('.', 1)
     except ValueError as e:
-        fault = FaultException("Bad handler '{}'".format(handler), str(e), None)
+        fault = FaultException(f"Bad handler '{handler}'", str(e), None)
         request_handler = make_fault_handler(fault)
         return request_handler
 
@@ -65,17 +65,22 @@ def _get_handler(handler):
         if file_handle is None:
             module_type = desc[2]
             if module_type == imp.C_BUILTIN:
-                fault = FaultException("Cannot use built-in module {} as a handler module".format(modname), None, None)
+                fault = FaultException(
+                    f"Cannot use built-in module {modname} as a handler module",
+                    None,
+                    None,
+                )
+
                 request_handler = make_fault_handler(fault)
                 return request_handler
         m = imp.load_module(modname, file_handle, pathname, desc)
     except ImportError as e:
-        fault = FaultException("Unable to import module '{}'".format(modname), str(e), None)
+        fault = FaultException(f"Unable to import module '{modname}'", str(e), None)
         request_handler = make_fault_handler(fault)
         return request_handler
     except SyntaxError as e:
         trace = "File \"%s\" Line %s\n\t%s" % (e.filename, e.lineno, e.text)
-        fault = FaultException("Syntax error in module '{}'".format(modname), str(e), trace)
+        fault = FaultException(f"Syntax error in module '{modname}'", str(e), trace)
         request_handler = make_fault_handler(fault)
         return request_handler
     finally:
@@ -85,7 +90,10 @@ def _get_handler(handler):
     try:
         request_handler = getattr(m, fname)
     except AttributeError as e:
-        fault = FaultException("Handler '{}' missing on module '{}'".format(fname, modname), str(e), None)
+        fault = FaultException(
+            f"Handler '{fname}' missing on module '{modname}'", str(e), None
+        )
+
         request_handler = make_fault_handler(fault)
     return request_handler
 
@@ -101,7 +109,7 @@ class number_str(float):
 def decimal_serializer(o):
     if isinstance(o, decimal.Decimal):
         return number_str(o)
-    raise TypeError(repr(o) + " is not JSON serializable")
+    raise TypeError(f"{repr(o)} is not JSON serializable")
 
 
 def make_fault_handler(fault):
@@ -165,11 +173,7 @@ def handle_event_request(lambda_runtime_client, request_handler, invoke_id, even
 
 def build_fault_result(invoke_id, exc_info, msg):
     etype, value, tb = exc_info
-    if msg:
-        msgs = [msg, str(value)]
-    else:
-        msgs = [str(value), etype.__name__]
-
+    msgs = [msg, str(value)] if msg else [str(value), etype.__name__]
     tb_tuples = extract_traceback(tb)
 
     for i in range(len(tb_tuples)):
@@ -243,7 +247,7 @@ class LambdaContext(object):
     def get_remaining_time_in_millis(self):
         epoch_now_in_ms = int(time.time() * 1000)
         delta_ms = self._epoch_deadline_time_in_ms - epoch_now_in_ms
-        return delta_ms if delta_ms > 0 else 0
+        return max(delta_ms, 0)
 
     def log(self, msg):
         sys.stdout.write(str(msg))
@@ -290,7 +294,7 @@ def is_pythonpath_set():
 
 
 def get_opt_site_packages_directory():
-    return '/opt/python/lib/python{}.{}/site-packages'.format(sys.version_info.major, sys.version_info.minor)
+    return f'/opt/python/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
 
 
 def get_opt_python_directory():
@@ -324,27 +328,27 @@ def add_default_site_directories():
 
 
 def set_ld_library_path_variable():
-    if os.environ.get('LD_LIBRARY_PATH') is None:
-        ld_library_path = "/var/lang/lib:/lib64:/usr/lib64"
+    if os.environ.get('LD_LIBRARY_PATH') is not None:
+        return
+    ld_library_path = "/var/lang/lib:/lib64:/usr/lib64"
 
-        if os.environ.get('LAMBDA_RUNTIME_DIR') is not None:
-            runtime_dir = os.environ['LAMBDA_RUNTIME_DIR']
-            runtime_dir_lib = os.path.join(runtime_dir, 'lib')
-            ld_library_path = ":".join([ld_library_path, runtime_dir, runtime_dir_lib])
+    if os.environ.get('LAMBDA_RUNTIME_DIR') is not None:
+        runtime_dir = os.environ['LAMBDA_RUNTIME_DIR']
+        runtime_dir_lib = os.path.join(runtime_dir, 'lib')
+        ld_library_path = ":".join([ld_library_path, runtime_dir, runtime_dir_lib])
 
-        if os.environ.get('LAMBDA_TASK_ROOT') is not None:
-            task_dir = os.environ['LAMBDA_TASK_ROOT']
-            task_dir_lib = os.path.join(task_dir, 'lib')
-            ld_library_path = ":".join([ld_library_path, task_dir, task_dir_lib])
+    if os.environ.get('LAMBDA_TASK_ROOT') is not None:
+        task_dir = os.environ['LAMBDA_TASK_ROOT']
+        task_dir_lib = os.path.join(task_dir, 'lib')
+        ld_library_path = ":".join([ld_library_path, task_dir, task_dir_lib])
 
-        os.environ["LD_LIBRARY_PATH"] = ld_library_path
+    os.environ["LD_LIBRARY_PATH"] = ld_library_path
 
 def update_xray_env_variable(xray_trace_id):
     if xray_trace_id is not None:
         os.environ['_X_AMZN_TRACE_ID'] = xray_trace_id
-    else:
-        if '_X_AMZN_TRACE_ID' in os.environ:
-            del os.environ['_X_AMZN_TRACE_ID']
+    elif '_X_AMZN_TRACE_ID' in os.environ:
+        del os.environ['_X_AMZN_TRACE_ID']
 
 _GLOBAL_AWS_REQUEST_ID = None
 
